@@ -1,0 +1,11 @@
+{
+  "appId": "com.smarttimer.remote",
+  "appName": "Smart Timer",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

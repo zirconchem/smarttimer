@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0066cc">
+<title>Smart Timer Remote</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#fff; --text:#333; --muted:#666;
+    --accent:#0066cc; --ok:#28a745; --bad:#dc3545; --warn:#ffc107; --neutral:#6c757d;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:'Segoe UI',Roboto,system-ui,sans-serif;
+    -webkit-tap-highlight-color:transparent;}
+  header{background:#fff;padding:14px 16px;box-shadow:0 2px 4px rgba(0,0,0,0.08);
+    display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;}
+  header h1{margin:0;font-size:18px;color:var(--accent);}
+  .conn{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--neutral);}
+  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok);}
+  .dot.off{background:var(--bad);}
+  .dot.warn{background:var(--warn);}
+  main{padding:14px;max-width:520px;margin:0 auto;}
+  .card{background:var(--card);border-radius:12px;padding:14px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:12px;}
+  .card h2{margin:0 0 10px 0;font-size:15px;color:var(--accent);
+    text-transform:uppercase;letter-spacing:0.5px;}
+  .row{display:flex;justify-content:space-between;align-items:center;
+    padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:15px;}
+  .row:last-child{border-bottom:none;}
+  .row .lbl{color:var(--muted);}
+  .row .val{font-weight:600;text-align:right;max-width:60%;word-break:break-word;}
+  .big{font-size:28px;font-weight:700;text-align:center;padding:12px 0;}
+  .big.on{color:var(--ok);}
+  .big.off{color:var(--bad);}
+  .big.unk{color:var(--muted);}
+  .pill{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;color:#fff;font-weight:600;}
+  .pill.ok{background:var(--ok);}
+  .pill.bad{background:var(--bad);}
+  .pill.warn{background:var(--warn);color:#333;}
+  .pill.neutral{background:var(--neutral);}
+  button{display:block;width:100%;padding:16px;margin:8px 0;font-size:17px;font-weight:600;
+    border:none;border-radius:10px;cursor:pointer;font-family:inherit;
+    transition:transform .1s, background .15s;}
+  button:active{transform:scale(0.97);}
+  .btn-on{background:var(--ok);color:#fff;}
+  .btn-on:hover{background:#1e7e34;}
+  .btn-off{background:var(--bad);color:#fff;}
+  .btn-off:hover{background:#b02a37;}
+  .btn-clear{background:#888;color:#fff;}
+  .btn-clear:hover{background:#666;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  label{display:block;font-size:13px;color:var(--muted);margin-top:10px;}
+  input,select{width:100%;padding:12px;margin-top:4px;font-size:16px;
+    border:1px solid #ccc;border-radius:8px;font-family:inherit;background:#fff;}
+  .small{font-size:12px;color:var(--muted);margin-top:6px;}
+  .hidden{display:none !important;}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+    background:#333;color:#fff;padding:10px 18px;border-radius:20px;
+    font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999;}
+  .toast.show{opacity:1;}
+  .toast.ok{background:var(--ok);}
+  .toast.bad{background:var(--bad);}
+  @media (prefers-color-scheme: dark){
+    :root{--bg:#121212;--card:#1e1e1e;--text:#e0e0e0;--muted:#999;}
+    header{background:#1a1a1a;}
+    .row{border-bottom:1px solid #2a2a2a;}
+    input,select{background:#2a2a2a;color:#e0e0e0;border-color:#444;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Smart Timer Remote</h1>
+  <div class="conn">
+    <span id="connDot" class="dot"></span>
+    <span id="connText">Disconnected</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Setup panel (shown only if no config saved) -->
+  <section id="setupPanel" class="card hidden">
+    <h2>Broker Setup</h2>
+    <label>Broker host</label>
+    <input id="cfgHost" placeholder="hc1c11bb.ala.asia-southeast1.emqxsl.com">
+    <label>WSS port</label>
+    <input id="cfgPort" value="8084">
+    <label>Username</label>
+    <input id="cfgUser" autocomplete="off">
+    <label>Password</label>
+    <input id="cfgPass" type="password" autocomplete="off">
+    <label>Topic base</label>
+    <input id="cfgBase" value="smarttimer">
+    <button class="btn-primary" onclick="saveSetup()">Save & Connect</button>
+    <div class="small">Saved in this browser only. Use TLS port 8084 for WSS.</div>
+  </section>
+
+  <!-- Main UI -->
+  <section id="mainPanel" class="hidden">
+
+    <!-- Relay status -->
+    <div class="card">
+      <h2>Status</h2>
+      <div id="relayBig" class="big unk">—</div>
+      <div class="row"><span class="lbl">Mode</span><span id="vMode" class="val">—</span></div>
+      <div class="row"><span class="lbl">Override</span><span id="vOverride" class="val">—</span></div>
+    </div>
+
+    <!-- Time & health -->
+    <div class="card">
+      <h2>Time</h2>
+      <div class="row"><span class="lbl">Device time</span><span id="vTime" class="val">—</span></div>
+      <div class="row"><span class="lbl">Source</span><span id="vSource" class="val">—</span></div>
+      <div class="row"><span class="lbl">Last NTP</span><span id="vNtp" class="val">—</span></div>
+      <div class="row"><span class="lbl">Temperature</span><span id="vTemp" class="val">—</span></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card">
+      <h2>Override Control</h2>
+      <label for="durSel">Duration</label>
+      <select id="durSel">
+        <option value="0">Indefinite</option>
+        <option value="30">30 minutes</option>
+        <option value="60" selected>1 hour</option>
+        <option value="90">1.5 hours</option>
+        <option value="120">2 hours</option>
+        <option value="180">3 hours</option>
+        <option value="240">4 hours</option>
+      </select>
+      <button class="btn-on"    onclick="sendOverride('on')">Force ON</button>
+      <button class="btn-off"   onclick="sendOverride('off')">Force OFF</button>
+      <button class="btn-clear" onclick="sendOverride('clear')">Clear Override</button>
+    </div>
+
+    <div class="card">
+      <button class="btn-clear" style="font-size:14px;padding:10px;" onclick="showSetup()">Broker Settings</button>
+      <div class="small" id="topicHint"></div>
+    </div>
+
+  </section>
+
+</main>
+
+<div id="toast" class="toast"></div>
+
+<!-- MQTT.js from CDN -->
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<script>
+'use strict';
+
+const LS_KEY = 'smarttimer_cfg_v1';
+let client = null;
+let currentTopics = null;
+let reconnectTimer = null;
+let manuallyClosed = false;
+
+/* ---------- Storage ---------- */
+function loadCfg() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) { return null; }
+}
+function saveCfg(cfg) {
+  localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+}
+function clearCfg() {
+  localStorage.removeItem(LS_KEY);
+}
+
+/* ---------- UI helpers ---------- */
+function $(id){ return document.getElementById(id); }
+function showToast(msg, kind) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (kind ? ' ' + kind : '');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { t.className = 'toast'; }, 2200);
+}
+function setConn(state, text) {
+  const dot = $('connDot');
+  dot.className = 'dot' + (state === 'on' ? ' on' : state === 'off' ? ' off' : state === 'warn' ? ' warn' : '');
+  $('connText').textContent = text;
+}
+function showSetup() {
+  $('setupPanel').classList.remove('hidden');
+  $('mainPanel').classList.add('hidden');
+  const cfg = loadCfg() || {};
+  $('cfgHost').value = cfg.host || '';
+  $('cfgPort').value = cfg.port || '8084';
+  $('cfgUser').value = cfg.user || '';
+  $('cfgPass').value = cfg.pass || '';
+  $('cfgBase').value = cfg.base || 'smarttimer';
+}
+function showMain() {
+  $('setupPanel').classList.add('hidden');
+  $('mainPanel').classList.remove('hidden');
+}
+
+/* ---------- Config + connect ---------- */
+function saveSetup() {
+  const cfg = {
+    host: $('cfgHost').value.trim(),
+    port: parseInt($('cfgPort').value.trim(), 10) || 8084,
+    user: $('cfgUser').value,
+    pass: $('cfgPass').value,
+    base: ($('cfgBase').value.trim() || 'smarttimer')
+  };
+  if (!cfg.host) { showToast('Host required', 'bad'); return; }
+  saveCfg(cfg);
+  connect(cfg);
+}
+
+function buildTopics(base) {
+  return {
+    base,
+    sub: base + '/status/#',
+    cmdOverride: base + '/cmd/override',
+    status: {
+      relay:    base + '/status/relay',
+      mode:     base + '/status/mode',
+      override: base + '/status/override',
+      time:     base + '/status/time',
+      source:   base + '/status/source',
+      temp:     base + '/status/temp',
+      lastNtp:  base + '/status/last_ntp',
+      online:   base + '/status/online'
+    }
+  };
+}
+
+function connect(cfg) {
+  if (client) {
+    manuallyClosed = true;
+    try { client.end(true); } catch(e){}
+    client = null;
+  }
+  currentTopics = buildTopics(cfg.base);
+
+  const url = `wss://${cfg.host}:${cfg.port}/mqtt`;
+  setConn('warn', 'Connecting…');
+
+  const opts = {
+    clientId: 'web-' + Math.random().toString(16).slice(2, 10),
+    clean: true,
+    reconnectPeriod: 4000,
+    connectTimeout: 10000,
+    keepalive: 30,
+    username: cfg.user || undefined,
+    password: cfg.pass || undefined
+  };
+
+  try {
+    client = mqtt.connect(url, opts);
+  } catch (e) {
+    setConn('off', 'Connect error');
+    showToast('Connect error: ' + e.message, 'bad');
+    return;
+  }
+
+  manuallyClosed = false;
+
+  client.on('connect', () => {
+    setConn('on', 'Connected');
+    showMain();
+    client.subscribe(currentTopics.sub, { qos: 1 }, (err) => {
+      if (err) { showToast('Subscribe failed', 'bad'); }
+    });
+    renderTopicsHint();
+  });
+
+  client.on('reconnect', () => setConn('warn', 'Reconnecting…'));
+  client.on('close',     () => { if (!manuallyClosed) setConn('off', 'Disconnected'); });
+  client.on('error',     (e) => { setConn('off', 'Error'); console.warn(e); });
+
+  client.on('message', (topic, payload) => {
+    const text = payload.toString();
+    if (topic === currentTopics.status.relay) {
+      const up = text.toUpperCase();
+      const el = $('relayBig');
+      el.textContent = up;
+      el.className = 'big ' + (up === 'ON' ? 'on' : up === 'OFF' ? 'off' : 'unk');
+    }
+    else if (topic === currentTopics.status.mode)     $('vMode').textContent     = text;
+    else if (topic === currentTopics.status.override) $('vOverride').textContent = humanOverride(text);
+    else if (topic === currentTopics.status.time)     $('vTime').textContent     = text;
+    else if (topic === currentTopics.status.source)   $('vSource').textContent   = text;
+    else if (topic === currentTopics.status.temp)     $('vTemp').textContent     = text + ' °C';
+    else if (topic === currentTopics.status.lastNtp)  $('vNtp').textContent      = text;
+    else if (topic === currentTopics.status.online) {
+      if (text === 'online')  setConn('on',  'Connected');
+      if (text === 'offline') setConn('off', 'Device offline');
+    }
+  });
+}
+
+function humanOverride(s) {
+  if (!s || s === 'none') return 'None';
+  const m = s.match(/^(on|off)_(indefinite|until_(\d{2}:\d{2}))$/);
+  if (!m) return s;
+  return (m[1] === 'on' ? 'ON' : 'OFF') + (m[2] === 'indefinite' ? ' (indefinite)' : ' until ' + m[3]);
+}
+
+function renderTopicsHint() {
+  $('topicHint').textContent = 'Subscribed to: ' + currentTopics.sub + ' | Commands → ' + currentTopics.cmdOverride;
+}
+
+/* ---------- Commands ---------- */
+function sendOverride(action) {
+  if (!client || !client.connected) {
+    showToast('Not connected', 'bad');
+    return;
+  }
+  let payload = action;
+  if (action === 'on' || action === 'off') {
+    const mins = parseInt($('durSel').value, 10);
+    if (mins > 0) payload = action + ':' + mins;
+  }
+  client.publish(currentTopics.cmdOverride, payload, { qos: 1 }, (err) => {
+    if (err) showToast('Publish failed', 'bad');
+    else     showToast('Sent: ' + payload, 'ok');
+  });
+}
+
+/* ---------- Boot ---------- */
+(function boot(){
+  const cfg = loadCfg();
+  if (cfg && cfg.host) {
+    showMain();
+    connect(cfg);
+  } else {
+    showSetup();
+  }
+})();
+</script>
+</body>
+</html>
